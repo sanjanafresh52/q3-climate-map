@@ -120,24 +120,23 @@ html, body {
   background: transparent;
 }
 
-/* Overlay layer (NOAA probability polygons) */
-.overlay-poly {
-  stroke: rgba(255,255,255,0.35);
-  stroke-width: 0.25;
+/* Overlay layer */
+.overlay-state {
+  stroke: var(--state-stroke);
+  stroke-width: 0.75;
   transition: opacity 200ms ease;
-  pointer-events: none;
 }
 
 .base-state {
   fill: var(--base-state-fill);
   stroke: #c9c9c5;
-  stroke-width: 0.6;
+  stroke-width: 0.75;
 }
 
 .state-outline {
   fill: none;
   stroke: #ffffff;
-  stroke-width: 0.9;
+  stroke-width: 0.75;
   pointer-events: none;
 }
 

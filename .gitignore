@@ -3,9 +3,4 @@ node_modules/
 Thumbs.db
 .vscode/
 .idea/
-.claude/
 *.log
-
-# Raw NOAA shapefile downloads — large (~50 MB each), reproducible via the parser
-data/raw/
-data/_tmp/
