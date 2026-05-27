@@ -1,11 +1,8 @@
 // NOAA Q3 2026 Climate Outlook map
-// Renders NOAA CPC probability contour polygons directly (smooth zones that
-// cross state boundaries), with state outlines drawn on top as a reference
-// grid and produce-region markers above that.
+// Renders an Albers USA choropleth overlay (temperature / precipitation)
+// with produce-region markers and a hover-driven freight callout.
 
 const US_ATLAS_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
-const TEMP_URL = "data/outlook-temp.geojson";
-const PRECIP_URL = "data/outlook-precip.geojson";
 
 const VIEW_BOX = { width: 960, height: 600 };
 
@@ -16,8 +13,6 @@ const svg = d3.select("#map")
 const projection = d3.geoAlbersUsa().scale(1200).translate([VIEW_BOX.width / 2, VIEW_BOX.height / 2]);
 const path = d3.geoPath(projection);
 
-const defs = svg.append("defs");
-
 const layers = {
   base: svg.append("g").attr("class", "layer-base"),
   overlay: svg.append("g").attr("class", "layer-overlay"),
@@ -26,9 +21,8 @@ const layers = {
 };
 
 let currentView = "temperature";
-let pinnedRegion = null;
+let pinnedRegion = null;     // tap-to-pin on mobile / click
 let hoveredRegion = null;
-const outlook = { temperature: null, precipitation: null };
 
 const calloutTitleEl = document.getElementById("callout-title");
 const calloutBodyEl = document.getElementById("callout-body");
@@ -37,29 +31,11 @@ const legendEl = document.getElementById("legend");
 
 renderCallout();
 
-Promise.all([
-  d3.json(US_ATLAS_URL),
-  d3.json(TEMP_URL),
-  d3.json(PRECIP_URL)
-]).then(([us, tempGeo, precipGeo]) => {
-  outlook.temperature = tempGeo;
-  outlook.precipitation = precipGeo;
-
+d3.json(US_ATLAS_URL).then(us => {
   const states = topojson.feature(us, us.objects.states);
   const stateMesh = topojson.mesh(us, us.objects.states, (a, b) => a !== b);
 
   projection.fitSize([VIEW_BOX.width, VIEW_BOX.height], states);
-
-  // Clip path: union of state geometries = US landmass. Overlay polygons
-  // are clipped to this so contours don't bleed into ocean / off-map areas.
-  defs.append("clipPath")
-    .attr("id", "us-clip")
-      .selectAll("path")
-      .data(states.features)
-      .join("path")
-        .attr("d", path);
-
-  layers.overlay.attr("clip-path", "url(#us-clip)");
 
   layers.base.selectAll("path.base-state")
     .data(states.features)
@@ -67,7 +43,12 @@ Promise.all([
       .attr("class", "base-state")
       .attr("d", path);
 
-  drawOverlay();
+  layers.overlay.selectAll("path.overlay-state")
+    .data(states.features)
+    .join("path")
+      .attr("class", "overlay-state")
+      .attr("d", path)
+      .attr("fill", d => overlayColor(d.properties.name, currentView));
 
   layers.outline.append("path")
     .attr("class", "state-outline")
@@ -76,7 +57,7 @@ Promise.all([
   drawMarkers();
   drawLegend();
 }).catch(err => {
-  console.error("Failed to load map data:", err);
+  console.error("Failed to load us-atlas:", err);
   svg.append("text")
     .attr("x", VIEW_BOX.width / 2)
     .attr("y", VIEW_BOX.height / 2)
@@ -86,33 +67,10 @@ Promise.all([
     .text("Map data failed to load. Check your network and refresh.");
 });
 
-// Bin (Cat, Prob) to the discrete legend colors so the map matches the legend.
-function colorFor(feature) {
-  const cat = feature.properties.Cat;
-  const prob = Number(feature.properties.Prob);
-  if (!cat || cat === "EC") return COLOR_RAMP["near"];
-  if (cat === "Above") {
-    if (prob >= 60) return COLOR_RAMP["above-strong"];
-    if (prob >= 50) return COLOR_RAMP["above-moderate"];
-    return COLOR_RAMP["above-slight"];
-  }
-  if (cat === "Below") {
-    if (prob >= 60) return COLOR_RAMP["below-strong"];
-    if (prob >= 50) return COLOR_RAMP["below-moderate"];
-    return COLOR_RAMP["below-slight"];
-  }
-  return COLOR_RAMP["near"];
-}
-
-function drawOverlay() {
-  const geo = outlook[currentView];
-  if (!geo) return;
-  layers.overlay.selectAll("path.overlay-poly")
-    .data(geo.features, (_, i) => i)
-    .join("path")
-      .attr("class", "overlay-poly")
-      .attr("d", path)
-      .attr("fill", d => colorFor(d));
+function overlayColor(stateName, view) {
+  const table = view === "precipitation" ? PRECIPITATION_OUTLOOK : TEMPERATURE_OUTLOOK;
+  const cls = table[stateName] || "near";
+  return COLOR_RAMP[cls];
 }
 
 function drawMarkers() {
@@ -147,6 +105,7 @@ function drawMarkers() {
         highlightRegion(pinnedRegion);
       });
 
+  // accessibility
   sel.append("title").text(d => d.name);
 }
 
@@ -195,13 +154,13 @@ document.querySelectorAll(".toggle").forEach(btn => {
       b.setAttribute("aria-selected", isActive ? "true" : "false");
     });
 
-    layers.overlay.selectAll("path.overlay-poly")
+    // Fade overlay out, swap fill, fade back in
+    layers.overlay.selectAll("path.overlay-state")
       .transition().duration(200)
         .style("opacity", 0)
-        .on("end", () => {
-          drawOverlay();
-          layers.overlay.selectAll("path.overlay-poly")
-            .style("opacity", 0)
+        .on("end", function () {
+          d3.select(this)
+            .attr("fill", d => overlayColor(d.properties.name, currentView))
             .transition().duration(200)
               .style("opacity", 1);
         });
