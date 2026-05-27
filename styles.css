@@ -121,9 +121,8 @@ html, body {
 }
 
 /* Overlay layer */
-.overlay-state {
-  stroke: var(--state-stroke);
-  stroke-width: 0.75;
+.overlay-poly {
+  stroke: none;
   transition: opacity 200ms ease;
 }
 
